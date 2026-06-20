@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Premium AI Summarizer</title>
+    <!-- NAYA TOOL: Tailwind CSS (Is se Apple jaisa premium design banta hai) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<!-- Khubsurat light background -->
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-4 font-sans text-slate-800">
+
+    <!-- Premium Card Design -->
+    <div class="bg-white max-w-2xl w-full rounded-3xl shadow-xl p-8 sm:p-10 transition-all">
+        
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-extrabold text-slate-900 mb-2">AI Email Summarizer ✨</h1>
+            <p class="text-slate-500">Lambi emails ko seconds mein chota karein aur Urdu mein samjhein.</p>
+        </div>
+
+        <!-- Textarea -->
+        <div class="mb-6">
+            <textarea id="emailInput" class="w-full h-40 p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none resize-none transition-all text-slate-700" placeholder="Yahan apni email paste karein..."></textarea>
+        </div>
+
+        <!-- Main Button -->
+        <button onclick="summarizeEmail()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-colors shadow-lg hover:shadow-xl transform hover:-translate-y-1">
+            Summarize Karo! 🚀
+        </button>
+
+        <!-- Loading Text -->
+        <div id="loadingText" class="hidden text-center text-blue-600 font-medium mt-6 animate-pulse">
+            AI Soch raha hai, thora intezar karein... ⏳
+        </div>
+
+        <!-- Result Box (Shuru mein chupa hoga) -->
+        <div id="resultBox" class="hidden mt-8 p-6 bg-slate-50 border border-slate-100 rounded-2xl">
+            
+            <h3 class="text-lg font-bold text-slate-800 mb-2">📝 Summary:</h3>
+            <p id="summaryText" class="text-slate-600 leading-relaxed mb-6"></p>
+
+            <h3 class="text-lg font-bold text-slate-800 mb-2">✅ Action Items:</h3>
+            <ul id="actionItemsList" class="list-disc pl-5 text-slate-600 space-y-2 mb-6"></ul>
+
+            <!-- NAYA JADOO: Translate Button -->
+            <button onclick="translateToUrdu()" id="translateBtn" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3 rounded-xl transition-colors shadow-md flex justify-center items-center gap-2">
+                Urdu Mein Translate Karein 🌍
+            </button>
+            
+            <!-- Translation Loading -->
+            <div id="translateLoading" class="hidden text-center text-emerald-600 font-medium mt-4 animate-pulse">
+                Urdu mein badal raha hoon... ⏳
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // Hum summary ko save kar lenge taake baad mein translate kar sakein
+        let currentSummary = "";
+        let currentActionItems = [];
+
+        async function summarizeEmail() {
+            const emailText = document.getElementById("emailInput").value;
+            if(!emailText) { alert("Pehle email toh likho bhai!"); return; }
+
+            // UI ko update karo
+            document.getElementById("loadingText").classList.remove("hidden");
+            document.getElementById("resultBox").classList.add("hidden");
+            document.getElementById("translateBtn").classList.remove("hidden"); // Button wapas dikhao
+
+            try {
+                const response = await fetch('/summarize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: emailText })
+                });
+                const data = await response.json();
+
+                document.getElementById("loadingText").classList.add("hidden");
+                document.getElementById("resultBox").classList.remove("hidden");
+                
+                // Data screen par lagao
+                document.getElementById("summaryText").innerText = data.summary;
+                currentSummary = data.summary; // Save kar liya translation ke liye
+
+                const ul = document.getElementById("actionItemsList");
+                ul.innerHTML = ""; 
+                currentActionItems = []; // Purane items clear karein
+
+                if (data.action_items) {
+                    let items = data.action_items;
+                    if(typeof items === 'string') items = items.split('\n');
+                    
+                    items.forEach(item => {
+                        let li = document.createElement("li");
+                        let cleanText = item.replace("-", "").trim();
+                        li.innerText = cleanText;
+                        ul.appendChild(li);
+                        currentActionItems.push(cleanText); // Save kar liya
+                    });
+                }
+            } catch (error) {
+                alert("Koi masla aa gaya hai AI se connect karne mein.");
+                document.getElementById("loadingText").classList.add("hidden");
+            }
+        }
+
+        // NAYA FUNCTION: Translate karne ke liye
+        async function translateToUrdu() {
+            document.getElementById("translateBtn").classList.add("hidden");
+            document.getElementById("translateLoading").classList.remove("hidden");
+
+            // Summary aur Action items ko mila kar ek text banate hain
+            let textToTranslate = "Summary: " + currentSummary + "\n\nAction Items:\n" + currentActionItems.join("\n");
+
+            try {
+                const response = await fetch('/translate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: textToTranslate })
+                });
+                
+                const data = await response.json();
+                
+                document.getElementById("translateLoading").classList.add("hidden");
+                
+                // Translated text ko summary wali jagah dikha do aur action items chupa do (taake clean lage)
+                document.getElementById("summaryText").innerText = data.translatedText;
+                document.getElementById("actionItemsList").innerHTML = ""; 
+                
+            } catch (error) {
+                alert("Translate karne mein masla hua.");
+                document.getElementById("translateBtn").classList.remove("hidden");
+                document.getElementById("translateLoading").classList.add("hidden");
+            }
+        }
+    </script>
+</body>
+</html>
