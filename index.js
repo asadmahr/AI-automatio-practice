@@ -4,8 +4,6 @@ const path = require('path');
 require('dotenv').config();
 
 const app = express();
-
-// NAYI TABDEELI: Cloud ke port ko support karne ke liye automatic switch
 const port = process.env.PORT || 3001; 
 
 // Website ki files yahan se uthao
@@ -14,7 +12,7 @@ app.use(express.json());
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// PEHLA KAAM: Summary banana (Jo humne kal kiya tha)
+// PEHLA KAAM: Summary banana
 app.post('/summarize', async (req, res) => {
   try {
     const emailText = req.body.email;
@@ -62,12 +60,5 @@ app.post('/translate', async (req, res) => {
   }
 });
 
-// Server on karne ka code
-const server = app.listen(port, () => {
-  console.log(`Zabardast! Server theek chal raha hai.`);
-  console.log(`Ab Google Chrome mein yeh link kholen: http://localhost:${port}`);
-});
-
-server.on('error', (e) => {
-  console.error('Server on hone mein koi masla hai:', e);
-});
+// AAKHRI TABDEELI VERCEL KE LIYE (app.listen mita kar ye lagaya hai)
+module.exports = app;
