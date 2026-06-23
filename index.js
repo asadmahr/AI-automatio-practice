@@ -1,9 +1,13 @@
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const path = require('path'); // Naya tool website ko dhoondne ke liye
 
 const app = express();
 app.use(express.json());
+
+// YEH LINE WEBSITE KO WAPAS LAAYEGI
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
