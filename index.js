@@ -40,45 +40,15 @@ async function sendTelegramMessage(text) {
     }
 }
 
-app.post('/summarize', async (req, res) => {
-    // Vercel Serverless optimization: Immediately tell Gmail "Message Received" so it doesn't timeout
-    // We will process the AI and Telegram part asynchronously
-    res.status(200).json({ status: "Processing started" });
+	1. Inbox check kar raha hoon...
+3:33:35 PM	Info	✅ 1 Nayi emails mili hain! Process shuru ho raha hai...
+3:33:35 PM	Info	📧 Email aayi hai is se: Asad Ali <mahrasadali7865@gmail.com>
+3:33:35 PM	Info	🚀 Vercel ko bhej raha hoon...
+3:33:36 PM	Info	📡 Vercel ka Jawab: A server error has occurred
 
-    try {
-        const { emailText } = req.body;
+FUNCTION_INVOCATION_FAILED
 
-        if (!emailText) {
-            console.error("No email text provided");
-            return;
-        }
-
-        const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
-        
-        const prompt = `Please provide a professional, highly concise summary of the following email, followed by a clear bulleted list of Action Items. Keep the tone corporate and strictly in English.\n\nEmail Content:\n${emailText}`;
-
-        // Gemini AI processing
-        const result = await model.generateContent(prompt);
-        const summary = result.response.text();
-
-        // Send to Telegram
-        const telegramMessage = `*New Professional Email Summary*\n\n${summary}`;
-        await sendTelegramMessage(telegramMessage);
-
-    } catch (error) {
-        console.error("Server Execution Error during async processing:", error.message);
-    }
-});
-
-// Root Endpoint for Vercel Health Check
-app.get('/', (req, res) => {
-    res.send('Enterprise Email Automation Engine is actively running.');
-});
-
-// Serve frontend if public folder exists (for testing purposes)
-app.use(express.static('public'));
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Server successfully initialized on port ${PORT}`);
-});
+iad1::88n2v-1782297215519-7f4288921fe4
+3:33:36 PM	Info	✅ Auto-reply bhej diya!
+3:33:36 PM	Info	✅ Email ko Read mark kar diya.
+3:33:33 PM	Notice	Execution completed
