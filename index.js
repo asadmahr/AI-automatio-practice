@@ -1,25 +1,27 @@
 require('dotenv').config();
 const express = require('express');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const path = require('path'); // Naya tool website ko dhoondne ke liye
+const cors = require('cors');
+const { GoogleGenAI } = require('@google/generative-ai');
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
-// YEH LINE WEBSITE KO WAPAS LAAYEGI
-app.use(express.static(path.join(__dirname, 'public')));
-
 // Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Environment Variables for Telegram
+// Environment Variables
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MY_CHAT_ID = process.env.MY_CHAT_ID;
 
-// Professional function to send messages directly to Telegram using HTTP Fetch (No crashing libraries needed)
+// Extremely fast Telegram fetch without waiting for full response processing
 async function sendTelegramMessage(text) {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
     try {
+        // Adding an AbortController to prevent hanging connections
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8-second timeout for Telegram
+
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -27,56 +29,44 @@ async function sendTelegramMessage(text) {
                 chat_id: MY_CHAT_ID,
                 text: text,
                 parse_mode: 'Markdown'
-            })
+            }),
+            signal: controller.signal
         });
-        const data = await response.json();
-        if (!data.ok) {
-             console.error("Telegram API Error Response:", data);
-        }
-        return data;
+        
+        clearTimeout(timeoutId);
+        return response.ok;
     } catch (error) {
-        console.error("Telegram Fetch Error:", error);
+        console.error("Telegram API Error or Timeout:", error.message);
     }
 }
 
-// The main Summarization Endpoint
 app.post('/summarize', async (req, res) => {
+    // Vercel Serverless optimization: Immediately tell Gmail "Message Received" so it doesn't timeout
+    // We will process the AI and Telegram part asynchronously
+    res.status(200).json({ status: "Processing started" });
+
     try {
-        const { email } = req.body; // Frontend sends 'email'
+        const { emailText } = req.body;
 
-        if (!email) {
-            return res.status(400).json({ error: "Email text is strictly required." });
+        if (!emailText) {
+            console.error("No email text provided");
+            return;
         }
 
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
         
-        // Professional System Prompt in English (Expecting JSON response)
-        const prompt = `You are an executive AI assistant. Read the provided email. Generate a professional summary in exactly 2 sentences. Then, extract any key action items or tasks. You must return your response STRICTLY as a JSON object with exactly two keys: 'summary' and 'action_items'. Here is the email: ${email}`;
+        const prompt = `Please provide a professional, highly concise summary of the following email, followed by a clear bulleted list of Action Items. Keep the tone corporate and strictly in English.\n\nEmail Content:\n${emailText}`;
 
+        // Gemini AI processing
         const result = await model.generateContent(prompt);
-        let text = result.response.text();
-        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const summary = result.response.text();
 
-        const finalData = JSON.parse(text);
-
-        // Formatting Action items for Telegram
-        let actionItemsText = "";
-        if (Array.isArray(finalData.action_items)) {
-            actionItemsText = finalData.action_items.map(item => `• ${item}`).join('\n');
-        } else {
-            actionItemsText = finalData.action_items;
-        }
-
-        // Send the formatted summary to your Telegram
-        const telegramMessage = `*New Professional Email Summary*\n\n*Summary:*\n${finalData.summary}\n\n*Action Items:*\n${actionItemsText}`;
+        // Send to Telegram
+        const telegramMessage = `*New Professional Email Summary*\n\n${summary}`;
         await sendTelegramMessage(telegramMessage);
 
-        // Send the JSON response back to the frontend website
-        res.json(finalData);
-
     } catch (error) {
-        console.error("Server Execution Error:", error);
-        res.status(500).json({ error: "An internal server error occurred while processing the request." });
+        console.error("Server Execution Error during async processing:", error.message);
     }
 });
 
@@ -85,4 +75,10 @@ app.get('/', (req, res) => {
     res.send('Enterprise Email Automation Engine is actively running.');
 });
 
-module.exports = app;
+// Serve frontend if public folder exists (for testing purposes)
+app.use(express.static('public'));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server successfully initialized on port ${PORT}`);
+});
