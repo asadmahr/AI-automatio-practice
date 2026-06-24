@@ -1,54 +1,39 @@
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
-const { GoogleGenAI } = require('@google/generative-ai');
-
 const app = express();
-app.use(cors());
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
 app.use(express.json());
 
-// Initialize Gemini
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Initialize AI
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "missing");
 
-// Environment Variables
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const MY_CHAT_ID = process.env.MY_CHAT_ID;
-
-// Extremely fast Telegram fetch without waiting for full response processing
-async function sendTelegramMessage(text) {
-    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+app.post('/summarize', async (req, res) => {
     try {
-        // Adding an AbortController to prevent hanging connections
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8-second timeout for Telegram
+        const { emailText } = req.body;
+        console.log("DEBUG: Processing started.");
 
-        const response = await fetch(url, {
+        if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is missing in Vercel!");
+        if (!process.env.TELEGRAM_BOT_TOKEN) throw new Error("TELEGRAM_BOT_TOKEN is missing!");
+
+        // 1. AI Processing
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const result = await model.generateContent(`Summarize this: ${emailText}`);
+        const summary = result.response.text();
+
+        // 2. Telegram Send
+        const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+        await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: MY_CHAT_ID,
-                text: text,
-                parse_mode: 'Markdown'
-            }),
-            signal: controller.signal
+            body: JSON.stringify({ chat_id: process.env.MY_CHAT_ID, text: summary, parse_mode: 'Markdown' })
         });
-        
-        clearTimeout(timeoutId);
-        return response.ok;
-    } catch (error) {
-        console.error("Telegram API Error or Timeout:", error.message);
+
+        res.status(200).json({ summary: summary });
+    } catch (e) {
+        console.error("DEBUG ERROR FOUND:", e.message);
+        res.status(500).json({ error: "Failed: " + e.message });
     }
-}
+});
 
-	1. Inbox check kar raha hoon...
-3:33:35 PM	Info	✅ 1 Nayi emails mili hain! Process shuru ho raha hai...
-3:33:35 PM	Info	📧 Email aayi hai is se: Asad Ali <mahrasadali7865@gmail.com>
-3:33:35 PM	Info	🚀 Vercel ko bhej raha hoon...
-3:33:36 PM	Info	📡 Vercel ka Jawab: A server error has occurred
-
-FUNCTION_INVOCATION_FAILED
-
-iad1::88n2v-1782297215519-7f4288921fe4
-3:33:36 PM	Info	✅ Auto-reply bhej diya!
-3:33:36 PM	Info	✅ Email ko Read mark kar diya.
-3:33:33 PM	Notice	Execution completed
+module.exports = app;
