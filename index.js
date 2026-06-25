@@ -26,26 +26,41 @@ async function sendTelegramMessage(text) {
 
 // 1. Summarize Endpoint (From Gmail)
 app.post('/summarize', async (req, res) => {
+    // 1. FAURAN JAWAB DEIN (Timeout bachane ke liye)
+    res.status(200).json({ status: "Processing started", message: "Email received successfully." });
+    
+    // 2. BACKGROUND PROCESSING SHURU KAREIN
     try {
         const { emailText, sender, subject } = req.body;
+
+        if (!emailText) {
+            console.error("DEBUG: Email text missing in request.");
+            return;
+        }
+
         const uniqueId = Math.random().toString(36).substring(2, 7).toUpperCase();
         
         // Save Context
-        emailContext.set(uniqueId, { sender, subject, emailText });
+        emailContext.set(uniqueId, { sender: sender || "Unknown", subject: subject || "No Subject", emailText });
 
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const prompt = `Read this email. Sender: ${sender}, Subject: ${subject}. Content: ${emailText}. 
-        Return JSON: summary (short paragraph) and action_items (list).`;
+        const prompt = `Read this email. Sender: ${sender || "Unknown"}, Subject: ${subject || "No Subject"}. Content: ${emailText}. 
+        Return strictly a JSON object with two keys: 'summary' (a short paragraph) and 'action_items' (an array of bullet points).`;
 
         const result = await model.generateContent(prompt);
-        const finalData = JSON.parse(result.response.text().replace(/```json/g, '').replace(/```/g, ''));
+        let textResult = result.response.text();
+        
+        // Safety check to remove markdown formatting if AI returns it
+        textResult = textResult.replace(/```json/g, '').replace(/```/g, '').trim();
+        const finalData = JSON.parse(textResult);
 
-        const msg = `📧 *New Email ID: #${uniqueId}*\n👤 *From:* ${sender}\n📌 *Subject:* ${subject}\n\n*Summary:*\n${finalData.summary}\n\n*Action Items:*\n${finalData.action_items}\n\n_Reply with #${uniqueId} [Your Message] to draft a reply._`;
+        const msg = `📧 *New Email ID: #${uniqueId}*\n👤 *From:* ${sender || "Unknown"}\n📌 *Subject:* ${subject || "No Subject"}\n\n*Summary:*\n${finalData.summary}\n\n*Action Items:*\n${finalData.action_items.map(item => `• ${item}`).join('\n')}\n\n_Reply with #${uniqueId} [Your Message] to draft a professional reply._`;
         
         await sendTelegramMessage(msg);
-        res.status(200).json({ status: "Success", id: uniqueId });
+        console.log(`DEBUG: Success! Summary sent for ID #${uniqueId}`);
+
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.error("DEBUG: Background Processing Error:", e.message);
     }
 });
 
