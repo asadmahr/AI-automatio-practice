@@ -1,30 +1,42 @@
+require('dotenv').config();
 const express = require('express');
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const axios = require('axios'); // Fetch ki jagah Axios behtar error handling karta hai
+const cors = require('cors');
+// GHILTI YAHAN THI! Ab yeh naam bilkul theek hai
+const { GoogleGenerativeAI } = require('@google/generative-ai'); 
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const TELEGRAM_API_URL = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`;
+// Environment Variables
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const MY_CHAT_ID = process.env.MY_CHAT_ID;
 
-// In-Memory Store for Email Context (Temporary memory for replies)
+// Initialize Gemini (Theek tareeqe se)
+const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+// Memory: Emails yaad rakhne ke liye (Telegram Reply ke liye)
 const emailContext = new Map();
 
-// Helper: Send to Telegram
+// Helper: Telegram par message bhejna
 async function sendTelegramMessage(text) {
+    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
     try {
-        await axios.post(`${TELEGRAM_API_URL}/sendMessage`, {
-            chat_id: process.env.MY_CHAT_ID,
-            text: text,
-            parse_mode: 'Markdown'
+        await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: MY_CHAT_ID,
+                text: text,
+                parse_mode: 'Markdown'
+            })
         });
     } catch (error) {
-        console.error("DEBUG: Telegram Send Error:", error.message);
+        console.error("Telegram API Error:", error);
     }
 }
 
-// 1. Summarize Endpoint (From Gmail)
+// 1. GMAIL SENSOR YAHAN MESSAGE BHEJEGA
 app.post('/summarize', async (req, res) => {
     try {
         const { emailText, sender, subject } = req.body;
@@ -33,69 +45,73 @@ app.post('/summarize', async (req, res) => {
             return res.status(400).json({ error: "Email text missing." });
         }
 
-        // Generate a Unique ID for this email
+        // Email ko ek Unique ID dena
         const uniqueId = Math.random().toString(36).substring(2, 7).toUpperCase();
-        
-        // Save Context for later replying
-        emailContext.set(uniqueId, { sender: sender || "Unknown", subject: subject || "No Subject", emailText });
+        emailContext.set(uniqueId, { sender, subject, emailText });
 
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const prompt = `Read this email. Sender: ${sender || "Unknown"}, Subject: ${subject || "No Subject"}. Content: ${emailText}. 
-        Return STRICTLY a JSON object with two keys: 'summary' (a short 1-line paragraph) and 'action_items' (an array of max 2 bullet points). Keep it fast!`;
+        // Gemini se baat karna (1.5-flash fast model use kar rahe hain)
+        const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+        
+        // AI ko command (Bina JSON ke taake crash na ho)
+        const prompt = `Read this email from ${sender || 'Unknown'}. Subject: ${subject || 'No Subject'}.\n\nProvide a 2-sentence summary and a bulleted list of Action Items. Do not use JSON. Just return the clean text.\n\nEmail Content:\n${emailText}`;
 
         const result = await model.generateContent(prompt);
-        let textResult = result.response.text();
-        textResult = textResult.replace(/```json/g, '').replace(/```/g, '').trim();
-        const finalData = JSON.parse(textResult);
+        const summaryText = result.response.text();
 
-        const msg = `📧 *New Email ID: #${uniqueId}*\n👤 *From:* ${sender || "Unknown"}\n📌 *Subject:* ${subject || "No Subject"}\n\n*Summary:*\n${finalData.summary}\n\n*Action Items:*\n${finalData.action_items.map(item => `• ${item}`).join('\n')}\n\n_Reply with #${uniqueId} [Your rough message] to draft a professional reply._`;
+        // Telegram ke liye khubsurat message tayyar karna
+        const telegramMessage = `📧 *New Email ID: #${uniqueId}*\n👤 *From:* ${sender || 'Unknown'}\n📌 *Subject:* ${subject || 'No Subject'}\n\n*Summary & Action Items:*\n${summaryText}\n\n_Reply with #${uniqueId} [your message] to generate a professional reply._`;
         
-        await sendTelegramMessage(msg);
-        
-        // VERCEL RULE: Sab kaam hone ke BAAD response bhejein!
-        res.status(200).json({ status: "Success", summary: finalData.summary });
+        await sendTelegramMessage(telegramMessage);
 
-    } catch (e) {
-        console.error("DEBUG: Processing Error:", e.message);
-        // Error aaye toh bhi Vercel ko bata do taake 500 error handle ho
-        res.status(500).json({ error: e.message });
+        // Vercel aur Gmail ko OK keh kar farigh karna
+        res.status(200).json({ status: "Success", message: "Processed completely" });
+
+    } catch (error) {
+        console.error("Summarize Error:", error.message);
+        res.status(500).json({ error: error.message });
     }
 });
 
-// 2. Webhook Endpoint (From Telegram - Professional Reply Feature)
+// 2. TELEGRAM YAHAN SE REPLY KAREGA (Webhook)
 app.post('/webhook', async (req, res) => {
-    // Immediate ACK to Telegram
-    res.sendStatus(200);
-
     try {
-        if (!req.body.message || !req.body.message.text) return;
+        // Hamesha 200 OK bhejna zaroori hai warna Telegram baar baar bhejta hai
+        if (!req.body.message || !req.body.message.text) {
+            return res.status(200).send('OK');
+        }
+
         const userText = req.body.message.text;
         
-        // Check if user is referencing an Email ID (e.g., #ABC12)
+        // ID dhoondna (jaise #ABC12)
         const idMatch = userText.match(/#([A-Z0-9]+)/);
         let prompt = "";
 
         if (idMatch && emailContext.has(idMatch[1])) {
             const context = emailContext.get(idMatch[1]);
             const userReplyIntent = userText.replace(idMatch[0], '').trim();
-            
-            prompt = `Context: The client sent an email with subject "${context.subject}" and content "${context.emailText}". 
-            User wants to reply: "${userReplyIntent}". 
-            Draft a medium-length, professional, polite business email based on this. Just give the email body.`;
+            prompt = `The client (${context.sender}) sent this email: "${context.emailText}".\n\nDraft a professional, medium-length corporate email reply based on this rough instruction: "${userReplyIntent}". Only return the final email body.`;
         } else {
-            prompt = `Draft a medium-length, professional business email for this rough request: "${userText}".`;
+            prompt = `Draft a professional, medium-length corporate email based on this rough note: "${userText}". Only return the final email body.`;
         }
 
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
         const result = await model.generateContent(prompt);
-        const reply = result.response.text();
+        const draft = result.response.text();
 
-        await sendTelegramMessage(`*Drafted Professional Reply:*\n\n${reply}\n\n_Copy and paste this into your Gmail to send to the client._`);
+        await sendTelegramMessage(`*Drafted Professional Reply:*\n\n${draft}`);
+        
+        res.status(200).send('OK');
+
     } catch (error) {
-        console.error("DEBUG: Webhook Processing Error:", error.message);
+        console.error("Webhook Error:", error.message);
+        res.status(200).send('Error handled');
     }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Zinda check karne ke liye
+app.get('/', (req, res) => {
+    res.send('AI Email Engine is 100% Alive and Running.');
+});
+
+// Vercel ke liye Server Export
 module.exports = app;
