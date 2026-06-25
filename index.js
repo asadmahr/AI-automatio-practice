@@ -55,16 +55,18 @@ app.post('/summarize', async (req, res) => {
         // AI ko command (Bina JSON ke taake crash na ho)
         const prompt = `Read this email from ${sender || 'Unknown'}. Subject: ${subject || 'No Subject'}.\n\nProvide a 2-sentence summary and a bulleted list of Action Items. Do not use JSON. Just return the clean text.\n\nEmail Content:\n${emailText}`;
 
-        const result = await model.generateContent(prompt);
-        const summaryText = result.response.text();
+        // YEH HAI ASAL JADOO (Fire & Forget Logic bina await ke)
+        model.generateContent(prompt).then(async (result) => {
+             const summaryText = result.response.text();
 
-        // Telegram ke liye khubsurat message tayyar karna
-        const telegramMessage = `📧 *New Email ID: #${uniqueId}*\n👤 *From:* ${sender || 'Unknown'}\n📌 *Subject:* ${subject || 'No Subject'}\n\n*Summary & Action Items:*\n${summaryText}\n\n_Reply with #${uniqueId} [your message] to generate a professional reply._`;
-        
-        await sendTelegramMessage(telegramMessage);
+             // Telegram ke liye khubsurat message tayyar karna
+             const telegramMessage = `📧 *New Email ID: #${uniqueId}*\n👤 *From:* ${sender || 'Unknown'}\n📌 *Subject:* ${subject || 'No Subject'}\n\n*Summary & Action Items:*\n${summaryText}\n\n_Reply with #${uniqueId} [your message] to generate a professional reply._`;
+             
+             await sendTelegramMessage(telegramMessage);
+        }).catch(err => console.error("Gemini Error Background:", err));
 
-        // Vercel aur Gmail ko OK keh kar farigh karna
-        res.status(200).json({ status: "Success", message: "Processed completely" });
+        // Vercel aur Gmail ko fauran OK keh kar farigh karna (Taake Crash na ho)
+        res.status(200).json({ status: "Success", message: "Processing started in background." });
 
     } catch (error) {
         console.error("Summarize Error:", error.message);
@@ -95,10 +97,12 @@ app.post('/webhook', async (req, res) => {
         }
 
         const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const result = await model.generateContent(prompt);
-        const draft = result.response.text();
-
-        await sendTelegramMessage(`*Drafted Professional Reply:*\n\n${draft}`);
+        
+        // Background Process for Webhook
+        model.generateContent(prompt).then(async (result) => {
+            const draft = result.response.text();
+            await sendTelegramMessage(`*Drafted Professional Reply:*\n\n${draft}`);
+        }).catch(err => console.error("Gemini Webhook Error Background:", err));
         
         res.status(200).send('OK');
 
