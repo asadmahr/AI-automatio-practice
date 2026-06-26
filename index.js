@@ -9,12 +9,10 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// === PRE-FLIGHT CHECK ===
-console.log("=== Checking Environment Variables ===");
+console.log("=== Vercel Engine Starting ===");
 console.log("GEMINI_API_KEY exists:", !!process.env.GEMINI_API_KEY);
 console.log("TELEGRAM_BOT_TOKEN exists:", !!process.env.TELEGRAM_BOT_TOKEN);
 console.log("MY_CHAT_ID exists:", !!process.env.MY_CHAT_ID);
-console.log("======================================");
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MY_CHAT_ID = process.env.MY_CHAT_ID;
@@ -22,69 +20,58 @@ const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const emailContext = new Map();
 
-// DIAGNOSTIC TELEGRAM SENDER
 async function sendTelegramMessage(text) {
-    if (!TELEGRAM_BOT_TOKEN || !MY_CHAT_ID) {
-        console.error("❌ CRITICAL: Missing Telegram Token or Chat ID!");
-        return;
-    }
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
     try {
-        console.log("🚀 Bhejne laga hoon Telegram ko message...");
+        console.log("🚀 Telegram ko message bhej raha hoon...");
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 chat_id: MY_CHAT_ID,
                 text: text,
-                parse_mode: 'Markdown' // Agar markdown mein error ho toh Telegram reject karta hai
+                parse_mode: 'Markdown'
             })
         });
-        
         const data = await response.json();
-        
-        // 🔴 X-RAY: Telegram ka asal jawab logs mein chhaapo!
         console.log("📨 Telegram API Response:", JSON.stringify(data));
-        
-        if(!data.ok) {
-            console.error("❌ Telegram ne Reject kiya:", data.description);
-        } else {
-            console.log("✅ Message Telegram par successfully deliver ho gaya!");
-        }
+        return data;
     } catch (error) {
-        console.error("❌ Fetch Error in sendTelegramMessage:", error);
+        console.error("❌ Telegram Fetch Error:", error);
     }
 }
 
 app.post('/summarize', async (req, res) => {
     try {
         const { emailText, sender, subject } = req.body;
+        console.log(`📧 Nayi email aayi hai: ${sender}`);
 
         if (!emailText) {
             return res.status(400).json({ error: "Email text missing." });
         }
 
-        // Fauran Gmail ko OK bhej do taake timeout na ho
-        res.status(200).json({ status: "Success", message: "Processing started in background." });
-
         const uniqueId = Math.random().toString(36).substring(2, 7).toUpperCase();
         emailContext.set(uniqueId, { sender, subject, emailText });
 
+        console.log("🧠 Gemini se summary banwa raha hoon...");
         const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
         const prompt = `Read this email from ${sender || 'Unknown'}. Subject: ${subject || 'No Subject'}.\n\nProvide a 2-sentence summary and a bulleted list of Action Items. Keep the tone professional. Do not use JSON. Ensure formatting uses plain text without unclosed asterisks or bold tags.\n\nEmail Content:\n${emailText}`;
 
-        // Background Processing
-        model.generateContent(prompt).then(async (result) => {
-            let summaryText = result.response.text();
-            
-            // Telegram Markdown Error se bachne ke liye safe text
-            const telegramMessage = `📧 *New Email ID: #${uniqueId}*\n👤 *From:* ${sender || 'Unknown'}\n📌 *Subject:* ${subject || 'No Subject'}\n\n*Summary & Action Items:*\n${summaryText}\n\n_Reply with #${uniqueId} [your message] to generate a reply._`;
-            
-            await sendTelegramMessage(telegramMessage);
-        }).catch(err => console.error("❌ Gemini Error:", err));
+        const result = await model.generateContent(prompt);
+        let summaryText = result.response.text();
+        
+        const telegramMessage = `📧 *New Email ID: #${uniqueId}*\n👤 *From:* ${sender || 'Unknown'}\n📌 *Subject:* ${subject || 'No Subject'}\n\n*Summary & Action Items:*\n${summaryText}\n\n_Reply with #${uniqueId} [your message] to generate a reply._`;
+        
+        console.log("⏳ Telegram ka wait kar raha hoon...");
+        await sendTelegramMessage(telegramMessage);
+
+        // SABSE ZAROORI: Jab sab kuch ho jaye, tab Gmail ko OK bhejo!
+        console.log("✅ Sab kuch mukammal! Ab Gmail ko OK bhej raha hoon.");
+        res.status(200).json({ status: "Success", message: "Summary sent to Telegram." });
 
     } catch (error) {
         console.error("❌ Summarize Endpoint Error:", error.message);
+        res.status(500).json({ error: "Internal Server Error" });
     }
 });
 
@@ -106,13 +93,14 @@ app.post('/webhook', async (req, res) => {
             prompt = `Draft a professional corporate email based on this rough note: "${userText}". Only return the final email body.`;
         }
 
+        // Webhook ko fauran OK bhejna zaroori hai warna Telegram baar baar bhejega
         res.status(200).send('OK');
 
         const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
-        model.generateContent(prompt).then(async (result) => {
-            const draft = result.response.text();
-            await sendTelegramMessage(`*Drafted Professional Reply:*\n\n${draft}`);
-        }).catch(err => console.error("❌ Gemini Webhook Error:", err));
+        const result = await model.generateContent(prompt);
+        const draft = result.response.text();
+        
+        await sendTelegramMessage(`*Drafted Professional Reply:*\n\n${draft}`);
 
     } catch (error) {
         console.error("❌ Webhook Error:", error.message);
@@ -120,7 +108,7 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send('AI Email Engine Diagnostic Mode Active.');
+    res.send('AI Email Engine Fully Synchronous Mode Active.');
 });
 
 module.exports = app;
