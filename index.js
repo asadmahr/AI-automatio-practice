@@ -91,11 +91,9 @@ app.post('/summarize', async (req, res) => {
 
 app.post('/webhook', async (req, res) => {
     try {
-        // 1. FAURAN Telegram ko OK bhejna taake wo dobara message na bheje
-        res.status(200).send('OK');
-
         if (!req.body.message || !req.body.message.text) {
-            return;
+            // Agar message text na ho toh farigh karo
+            return res.status(200).send('OK');
         }
 
         const userText = req.body.message.text;
@@ -118,8 +116,13 @@ app.post('/webhook', async (req, res) => {
         console.log("📨 Sending drafted reply to Telegram...");
         await sendTelegramMessage(`Drafted Professional Reply:\n\n${draft}`);
 
+        // SAB KUCH HONE KE BAAD VERCEL KO BOLNA HAI KE 'OK' AB SO JAO!
+        res.status(200).send('OK');
+
     } catch (error) {
         console.error("❌ Webhook Error:", error.message);
+        // Error aaye tab bhi Telegram ko OK bhej do taake wo loop mein na phanse
+        res.status(200).send('OK');
     }
 });
 
