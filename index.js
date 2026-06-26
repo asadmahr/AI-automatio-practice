@@ -21,6 +21,12 @@ const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 // Memory for contextual replies
 const emailContext = new Map();
 
+// Helper to escape Markdown characters to prevent Telegram rejections
+function escapeMarkdown(text) {
+    if (!text) return "";
+    return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
+}
+
 async function sendTelegramMessage(text) {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
     try {
@@ -31,11 +37,10 @@ async function sendTelegramMessage(text) {
             body: JSON.stringify({
                 chat_id: MY_CHAT_ID,
                 text: text,
-                parse_mode: 'Markdown'
+                // Removed parse_mode completely to avoid ANY formatting errors
             })
         });
         
-        // YAHAN HAI ASAL JADOO (X-RAY VISION)
         const data = await response.json();
         console.log("📨 Telegram API Response:", JSON.stringify(data));
         return data;
@@ -63,11 +68,11 @@ app.post('/summarize', async (req, res) => {
         const result = await model.generateContent(prompt);
         let summaryText = result.response.text();
         
-        const telegramMessage = `📧 *New Email ID: #${uniqueId}*\n👤 *From:* ${sender || 'Unknown'}\n📌 *Subject:* ${subject || 'No Subject'}\n\n*Summary & Action Items:*\n${summaryText}\n\n_Reply with #${uniqueId} [your message] to generate a reply._`;
+        // Plain text message, no markdown parsing required
+        const telegramMessage = `📧 New Email ID: #${uniqueId}\n👤 From: ${sender || 'Unknown'}\n📌 Subject: ${subject || 'No Subject'}\n\nSummary & Action Items:\n${summaryText}\n\nReply with #${uniqueId} [your message] to generate a reply.`;
         
         console.log("⏳ Telegram ka wait kar raha hoon...");
         
-        // Intezar karega jab tak Telegram se jawab na aa jaye
         const tgResponse = await sendTelegramMessage(telegramMessage);
 
         if (tgResponse && tgResponse.ok) {
@@ -86,8 +91,11 @@ app.post('/summarize', async (req, res) => {
 
 app.post('/webhook', async (req, res) => {
     try {
+        // 1. FAURAN Telegram ko OK bhejna taake wo dobara message na bheje
+        res.status(200).send('OK');
+
         if (!req.body.message || !req.body.message.text) {
-            return res.status(200).send('OK');
+            return;
         }
 
         const userText = req.body.message.text;
@@ -97,19 +105,18 @@ app.post('/webhook', async (req, res) => {
         if (idMatch && emailContext.has(idMatch[1])) {
             const context = emailContext.get(idMatch[1]);
             const userReplyIntent = userText.replace(idMatch[0], '').trim();
-            prompt = `The client (${context.sender}) sent this email: "${context.emailText}".\n\nDraft a professional corporate email reply based on this rough instruction: "${userReplyIntent}". Only return the final email body.`;
+            prompt = `The client (${context.sender}) sent this email: "${context.emailText}".\n\nDraft a professional corporate email reply based on this rough instruction: "${userReplyIntent}". Only return the final email body in plain text.`;
         } else {
-            prompt = `Draft a professional corporate email based on this rough note: "${userText}". Only return the final email body.`;
+            prompt = `Draft a professional corporate email based on this rough note: "${userText}". Only return the final email body in plain text.`;
         }
 
-        // Fauran OK bhejna taake Telegram baar baar retry na kare
-        res.status(200).send('OK');
-
+        console.log("🧠 Generating professional reply...");
         const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
         const result = await model.generateContent(prompt);
         const draft = result.response.text();
         
-        await sendTelegramMessage(`*Drafted Professional Reply:*\n\n${draft}`);
+        console.log("📨 Sending drafted reply to Telegram...");
+        await sendTelegramMessage(`Drafted Professional Reply:\n\n${draft}`);
 
     } catch (error) {
         console.error("❌ Webhook Error:", error.message);
@@ -120,5 +127,4 @@ app.get('/', (req, res) => {
     res.send('AI Email Engine Fully Synchronous Mode Active.');
 });
 
-// Vercel ke liye app export karna zaroori hai
 module.exports = app;
