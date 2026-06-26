@@ -18,6 +18,7 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MY_CHAT_ID = process.env.MY_CHAT_ID;
 const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+// Memory for contextual replies
 const emailContext = new Map();
 
 async function sendTelegramMessage(text) {
@@ -33,6 +34,8 @@ async function sendTelegramMessage(text) {
                 parse_mode: 'Markdown'
             })
         });
+        
+        // YAHAN HAI ASAL JADOO (X-RAY VISION)
         const data = await response.json();
         console.log("📨 Telegram API Response:", JSON.stringify(data));
         return data;
@@ -44,7 +47,7 @@ async function sendTelegramMessage(text) {
 app.post('/summarize', async (req, res) => {
     try {
         const { emailText, sender, subject } = req.body;
-        console.log(`📧 Nayi email aayi hai: ${sender}`);
+        console.log(`📧 Nayi email aayi hai: ${sender || 'Unknown'}`);
 
         if (!emailText) {
             return res.status(400).json({ error: "Email text missing." });
@@ -55,7 +58,7 @@ app.post('/summarize', async (req, res) => {
 
         console.log("🧠 Gemini se summary banwa raha hoon...");
         const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
-        const prompt = `Read this email from ${sender || 'Unknown'}. Subject: ${subject || 'No Subject'}.\n\nProvide a 2-sentence summary and a bulleted list of Action Items. Keep the tone professional. Do not use JSON. Ensure formatting uses plain text without unclosed asterisks or bold tags.\n\nEmail Content:\n${emailText}`;
+        const prompt = `Read this email from ${sender || 'Unknown'}. Subject: ${subject || 'No Subject'}.\n\nProvide a 2-sentence summary and a bulleted list of Action Items. Keep the tone professional. Ensure formatting uses plain text without unclosed asterisks or bold tags.\n\nEmail Content:\n${emailText}`;
 
         const result = await model.generateContent(prompt);
         let summaryText = result.response.text();
@@ -63,11 +66,17 @@ app.post('/summarize', async (req, res) => {
         const telegramMessage = `📧 *New Email ID: #${uniqueId}*\n👤 *From:* ${sender || 'Unknown'}\n📌 *Subject:* ${subject || 'No Subject'}\n\n*Summary & Action Items:*\n${summaryText}\n\n_Reply with #${uniqueId} [your message] to generate a reply._`;
         
         console.log("⏳ Telegram ka wait kar raha hoon...");
-        await sendTelegramMessage(telegramMessage);
+        
+        // Intezar karega jab tak Telegram se jawab na aa jaye
+        const tgResponse = await sendTelegramMessage(telegramMessage);
 
-        // SABSE ZAROORI: Jab sab kuch ho jaye, tab Gmail ko OK bhejo!
-        console.log("✅ Sab kuch mukammal! Ab Gmail ko OK bhej raha hoon.");
-        res.status(200).json({ status: "Success", message: "Summary sent to Telegram." });
+        if (tgResponse && tgResponse.ok) {
+            console.log("✅ Sab kuch mukammal! Ab Gmail ko OK bhej raha hoon.");
+            res.status(200).json({ status: "Success", message: "Summary sent to Telegram." });
+        } else {
+            console.error("❌ Telegram ne message reject kar diya!");
+            res.status(500).json({ status: "Error", message: "Telegram rejected the message." });
+        }
 
     } catch (error) {
         console.error("❌ Summarize Endpoint Error:", error.message);
@@ -93,7 +102,7 @@ app.post('/webhook', async (req, res) => {
             prompt = `Draft a professional corporate email based on this rough note: "${userText}". Only return the final email body.`;
         }
 
-        // Webhook ko fauran OK bhejna zaroori hai warna Telegram baar baar bhejega
+        // Fauran OK bhejna taake Telegram baar baar retry na kare
         res.status(200).send('OK');
 
         const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -111,4 +120,5 @@ app.get('/', (req, res) => {
     res.send('AI Email Engine Fully Synchronous Mode Active.');
 });
 
+// Vercel ke liye app export karna zaroori hai
 module.exports = app;
