@@ -55,43 +55,57 @@ app.post('/summarize', async (req, res) => {
 });
 
 app.post('/webhook', async (req, res) => {
-    // 1. FAURAN Telegram ko OK bhejo taake wo crash na kare (Super Important)
-    res.status(200).send('OK'); 
-
+    // YAHAN GHALTI THI - OK PEHLE BHEJNE SE VERCEL SO JATA THA
+    // Ise ab hata kar function ke bilkul END par rakh diya hai
     try {
-        if (!req.body.message || !req.body.message.text) return;
+        if (!req.body.message || !req.body.message.text) {
+            return res.status(200).send('OK');
+        }
 
         const userText = req.body.message.text;
         const idMatch = userText.match(/#([A-Z0-9]+)/);
 
-        if (idMatch && emailContext.has(idMatch[1])) {
-            const clientContext = emailContext.get(idMatch[1]);
-            const userReplyIntent = userText.replace(idMatch[0], '').trim();
+        if (idMatch) {
+            const id = idMatch[1];
             
-            const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
-            
-            // PROMPT UPDATE: Fix for [Your Name] to Asad Ali. Yeh hamesha Asad Ali likhega.
-            const prompt = `The client (${clientContext.sender}) sent this email: "${clientContext.emailText}".\n\nDraft a professional email reply based on this instruction: "${userReplyIntent}".\n\nIMPORTANT: Only return the exact email body. Sign off the email as "Asad Ali". DO NOT use placeholders like [Your Name].`;
-            
-            const result = await model.generateContent(prompt);
-            const draft = result.response.text();
-            
-            // Apps script ko data bhejo taake wo Client ko asal email bhej sake
-            await fetch(APPS_SCRIPT_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    clientEmail: clientContext.sender,
-                    subject: clientContext.subject,
-                    replyBody: draft
-                })
-            });
+            if (emailContext.has(id)) {
+                const clientContext = emailContext.get(id);
+                const userReplyIntent = userText.replace(idMatch[0], '').trim();
+                
+                const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
+                
+                // PROMPT UPDATE: Asad Ali aur Client details
+                const prompt = `The client (${clientContext.sender}) sent this email: "${clientContext.emailText}".\n\nDraft a professional email reply based on this instruction: "${userReplyIntent}".\n\nIMPORTANT: Only return the exact email body. Sign off the email as "Asad Ali". DO NOT use placeholders like [Your Name].`;
+                
+                const result = await model.generateContent(prompt);
+                const draft = result.response.text();
+                
+                // Apps script ko data bhejo taake wo Client ko asal email bhej sake
+                await fetch(APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        clientEmail: clientContext.sender,
+                        subject: clientContext.subject,
+                        replyBody: draft
+                    })
+                });
 
-            // Kamyaabi ka message Telegram par wapas bhejo
-            await sendTelegramMessage(`✅ Email Successfully Sent to Client!\n\nEmail Body:\n${draft}`);
+                // Kamyaabi ka message Telegram par wapas bhejo
+                await sendTelegramMessage(`✅ Email Successfully Sent to Client!\n\nEmail Body:\n${draft}`);
+            } else {
+                // Agar Vercel server sleep hone ki wajah se email bhool jaye
+                await sendTelegramMessage(`⚠️ Vercel memory cleared. (ID: #${id} not found). Server sleep issue. Kripya naye emails par foran reply karein.`);
+            }
         }
+        
+        // SAB KUCH MUKAMMAL HONE KE BAAD TELEGRAM KO OK BHEJO TAAKE PROCESS KILL NA HO
+        return res.status(200).send('OK'); 
+
     } catch (error) {
         console.error("Webhook Error:", error);
+        await sendTelegramMessage(`❌ AI Error: Jawab process nahi ho saka.`);
+        return res.status(200).send('OK');
     }
 });
 
