@@ -28,7 +28,6 @@ async function sendTelegramMessage(text) {
 
 app.post('/summarize', async (req, res) => {
     try {
-        // ID Google ki taraf se aayegi (uniqueId)
         const { emailText, sender, subject, uniqueId } = req.body;
         
         const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -60,33 +59,31 @@ app.post('/webhook', async (req, res) => {
             const id = idMatch[1];
             const userReplyIntent = userText.replace(idMatch[0], '').trim();
             
-            // Temporary message taake aapko pata chal jaye k Vercel jaag gaya hai
-            await sendTelegramMessage(`⏳ Wait karein... Draft ban raha hai...`);
+            await sendTelegramMessage(`⏳ Wait karein... Google se memory mangwa raha hoon...`);
             
-            // JADOO: Vercel ab khud yaad nahi rakhega, Google se purana email mangwayega
-            let clientContext = null;
+            let clientContext;
             try {
                 const gasContextResponse = await fetch(APPS_SCRIPT_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: "getContext", id: id })
                 });
-                // Yahan JSON parse error pakadne ke liye try-catch lagaya hai
-                clientContext = await gasContextResponse.json();
+                
+                const responseText = await gasContextResponse.text(); 
+                clientContext = JSON.parse(responseText); 
             } catch (fetchErr) {
-                 console.error("Failed to fetch context from GAS:", fetchErr);
-                 await sendTelegramMessage(`⚠️ Error: Google server se raabta toot gaya. Please try again.`);
-                 return res.status(200).send('OK');
+                await sendTelegramMessage(`⚠️ Error: Google server se raabta toot gaya. Please check Apps Script deployment permissions (Should be 'Anyone').`);
+                return res.status(200).send('OK');
             }
 
             if (clientContext && !clientContext.error) {
+                await sendTelegramMessage(`📝 Draft ban raha hai...`);
                 const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
                 const prompt = `The client (${clientContext.sender}) sent this email: "${clientContext.emailText}".\n\nDraft a professional email reply based on this instruction: "${userReplyIntent}".\n\nIMPORTANT: Only return the exact email body. Sign off the email as "Asad Ali". DO NOT use placeholders like [Your Name].`;
                 
                 const result = await model.generateContent(prompt);
                 const draft = result.response.text();
                 
-                // Draft wapas Google ko bhej do reply karne ke liye
                 await fetch(APPS_SCRIPT_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -107,7 +104,7 @@ app.post('/webhook', async (req, res) => {
 
     } catch (error) {
         console.error("Webhook Error:", error);
-        await sendTelegramMessage(`❌ AI Error: Jawab process nahi ho saka.`);
+        await sendTelegramMessage(`❌ AI Error: Jawab process nahi ho saka. Details: ${error.message}`);
         return res.status(200).send('OK');
     }
 });
