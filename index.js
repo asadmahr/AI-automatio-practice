@@ -11,11 +11,7 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MY_CHAT_ID = process.env.MY_CHAT_ID;
 const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// YAHAN MAINE AAPKA EXACT URL LAGA DIYA HAI BINA KISI GHALTI KE
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz1jGtizMrv3ftZMkkDZfnWyJ1HrxVcJYf5Q9qTIpjBNO6l2kYFtTJLZjArMqsOCd2_pg/exec";
-
-// Memory storage for emails
-const emailContext = new Map();
 
 async function sendTelegramMessage(text) {
     try {
@@ -32,12 +28,9 @@ async function sendTelegramMessage(text) {
 
 app.post('/summarize', async (req, res) => {
     try {
-        const { emailText, sender, subject } = req.body;
-        const uniqueId = Math.random().toString(36).substring(2, 7).toUpperCase();
+        // ID Google ki taraf se aayegi (uniqueId)
+        const { emailText, sender, subject, uniqueId } = req.body;
         
-        // Saving email details in memory context
-        emailContext.set(uniqueId, { sender, subject, emailText });
-
         const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
         const prompt = `Read this email from ${sender}. Subject: ${subject}.\n\nProvide a 2-sentence summary and a bulleted list of Action Items. Keep tone professional. Plain text only.\n\nEmail Content:\n${emailText}`;
 
@@ -55,8 +48,6 @@ app.post('/summarize', async (req, res) => {
 });
 
 app.post('/webhook', async (req, res) => {
-    // YAHAN GHALTI THI - OK PEHLE BHEJNE SE VERCEL SO JATA THA
-    // Ise ab hata kar function ke bilkul END par rakh diya hai
     try {
         if (!req.body.message || !req.body.message.text) {
             return res.status(200).send('OK');
@@ -67,39 +58,43 @@ app.post('/webhook', async (req, res) => {
 
         if (idMatch) {
             const id = idMatch[1];
+            const userReplyIntent = userText.replace(idMatch[0], '').trim();
             
-            if (emailContext.has(id)) {
-                const clientContext = emailContext.get(id);
-                const userReplyIntent = userText.replace(idMatch[0], '').trim();
-                
+            // Temporary message taake aapko pata chal jaye k Vercel jaag gaya hai
+            await sendTelegramMessage(`⏳ Wait karein... Draft ban raha hai...`);
+            
+            // JADOO: Vercel ab khud yaad nahi rakhega, Google se purana email mangwayega
+            const gasContextResponse = await fetch(APPS_SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: "getContext", id: id })
+            });
+            const clientContext = await gasContextResponse.json();
+
+            if (clientContext && !clientContext.error) {
                 const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
-                
-                // PROMPT UPDATE: Asad Ali aur Client details
                 const prompt = `The client (${clientContext.sender}) sent this email: "${clientContext.emailText}".\n\nDraft a professional email reply based on this instruction: "${userReplyIntent}".\n\nIMPORTANT: Only return the exact email body. Sign off the email as "Asad Ali". DO NOT use placeholders like [Your Name].`;
                 
                 const result = await model.generateContent(prompt);
                 const draft = result.response.text();
                 
-                // Apps script ko data bhejo taake wo Client ko asal email bhej sake
+                // Draft wapas Google ko bhej do reply karne ke liye
                 await fetch(APPS_SCRIPT_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        clientEmail: clientContext.sender,
-                        subject: clientContext.subject,
+                        action: "sendReply",
+                        id: id,
                         replyBody: draft
                     })
                 });
 
-                // Kamyaabi ka message Telegram par wapas bhejo
                 await sendTelegramMessage(`✅ Email Successfully Sent to Client!\n\nEmail Body:\n${draft}`);
             } else {
-                // Agar Vercel server sleep hone ki wajah se email bhool jaye
-                await sendTelegramMessage(`⚠️ Vercel memory cleared. (ID: #${id} not found). Server sleep issue. Kripya naye emails par foran reply karein.`);
+                await sendTelegramMessage(`⚠️ Error: ID #${id} ki memory Google se mita di gayi hai ya nahi mili.`);
             }
         }
         
-        // SAB KUCH MUKAMMAL HONE KE BAAD TELEGRAM KO OK BHEJO TAAKE PROCESS KILL NA HO
         return res.status(200).send('OK'); 
 
     } catch (error) {
