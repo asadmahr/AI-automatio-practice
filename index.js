@@ -11,7 +11,7 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MY_CHAT_ID = process.env.MY_CHAT_ID;
 const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz1jGtizMrv3ftZMkkDZfnWyJ1HrxVcJYf5Q9qTIpjBNO6l2kYFtTJLZjArMqsOCd2_pg/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyFdC9yJ9o4WldfStwb6yLVwbypB031Xkdfx3H_FtCe-45R_C7XsYq8IcJjA7-GPoIOtw/exec";
 
 async function sendTelegramMessage(text) {
     try {
