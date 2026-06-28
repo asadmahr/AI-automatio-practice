@@ -64,12 +64,20 @@ app.post('/webhook', async (req, res) => {
             await sendTelegramMessage(`⏳ Wait karein... Draft ban raha hai...`);
             
             // JADOO: Vercel ab khud yaad nahi rakhega, Google se purana email mangwayega
-            const gasContextResponse = await fetch(APPS_SCRIPT_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: "getContext", id: id })
-            });
-            const clientContext = await gasContextResponse.json();
+            let clientContext = null;
+            try {
+                const gasContextResponse = await fetch(APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: "getContext", id: id })
+                });
+                // Yahan JSON parse error pakadne ke liye try-catch lagaya hai
+                clientContext = await gasContextResponse.json();
+            } catch (fetchErr) {
+                 console.error("Failed to fetch context from GAS:", fetchErr);
+                 await sendTelegramMessage(`⚠️ Error: Google server se raabta toot gaya. Please try again.`);
+                 return res.status(200).send('OK');
+            }
 
             if (clientContext && !clientContext.error) {
                 const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
