@@ -11,7 +11,6 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MY_CHAT_ID = process.env.MY_CHAT_ID;
 const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// BHAII YAHAN PAR APNA NAYA WEB APP URL PASTE KAREIN (Agar change hua ho):
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz1jGtizMrv3ftZMkkDZfnWyJ1HrxVcJYf5Q9qTIpjBNO6l2kYFtTJLZjArMqsOCd2_pg/exec";
 
 async function sendTelegramMessage(text) {
@@ -31,7 +30,8 @@ app.post('/summarize', async (req, res) => {
     try {
         const { emailText, sender, subject, uniqueId } = req.body;
         
-        const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" }); // Model update for stability
+        // YAHAN FIX KIYA HAI: gemini-1.5-flash ko badal kar gemini-pro kar diya hai (No more 404 Error)
+        const model = ai.getGenerativeModel({ model: "gemini-pro" }); 
         const prompt = `Read this email from ${sender}. Subject: ${subject}.\n\nProvide a 2-sentence summary and a bulleted list of Action Items. Keep tone professional. Plain text only.\n\nEmail Content:\n${emailText}`;
 
         const result = await model.generateContent(prompt);
@@ -84,7 +84,8 @@ app.post('/webhook', async (req, res) => {
             }
 
             if (clientContext && !clientContext.error) {
-                const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+                // YAHAN BHI FIX KIYA HAI: gemini-pro lagaya hai taake reply banne mein crash na ho
+                const model = ai.getGenerativeModel({ model: "gemini-pro" });
                 const prompt = `The client (${clientContext.sender}) sent this email: "${clientContext.emailText}".\n\nDraft a professional email reply based on this instruction: "${userReplyIntent}".\n\nIMPORTANT: Only return the exact email body. Sign off the email as "Asad Ali". DO NOT use placeholders like [Your Name].`;
                 
                 const result = await model.generateContent(prompt);
