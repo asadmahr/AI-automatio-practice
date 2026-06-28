@@ -11,8 +11,8 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MY_CHAT_ID = process.env.MY_CHAT_ID;
 const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// BHAII YAHAN PAR APNA NAYA WEB APP URL PASTE KAREIN JO GOOGLE NE ABHI DIYA HAI:
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwzOgOawT7hVmAMf34M378s_FciBMC2IjRRJO1XjY2RY5bvNgK_msCs-UTImx4eRnWLOw/exec";
+// BHAII YAHAN PAR APNA NAYA WEB APP URL PASTE KAREIN (Agar change hua ho):
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz1jGtizMrv3ftZMkkDZfnWyJ1HrxVcJYf5Q9qTIpjBNO6l2kYFtTJLZjArMqsOCd2_pg/exec";
 
 async function sendTelegramMessage(text) {
     try {
@@ -31,7 +31,7 @@ app.post('/summarize', async (req, res) => {
     try {
         const { emailText, sender, subject, uniqueId } = req.body;
         
-        const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" }); // Model update for stability
         const prompt = `Read this email from ${sender}. Subject: ${subject}.\n\nProvide a 2-sentence summary and a bulleted list of Action Items. Keep tone professional. Plain text only.\n\nEmail Content:\n${emailText}`;
 
         const result = await model.generateContent(prompt);
@@ -43,6 +43,7 @@ app.post('/summarize', async (req, res) => {
         res.status(200).json({ status: "Success", message: "Sent to Telegram" });
     } catch (error) {
         console.error("Summarize Error:", error);
+        await sendTelegramMessage(`❌ AI Error (Summary Nahi Bani): ${error.message}`);
         res.status(500).json({ error: "Server Error" });
     }
 });
@@ -60,7 +61,7 @@ app.post('/webhook', async (req, res) => {
             const id = idMatch[1];
             const userReplyIntent = userText.replace(idMatch[0], '').trim();
             
-            await sendTelegramMessage(`⏳ Wait karein... Google se memory mangwa raha hoon...`);
+            await sendTelegramMessage(`⏳ Wait karein... Draft ban raha hai...`);
             
             let clientContext;
             try {
@@ -72,7 +73,6 @@ app.post('/webhook', async (req, res) => {
                 
                 const responseText = await gasContextResponse.text(); 
                 
-                // Agar Google ne block kiya toh yeh pakar lega
                 if (responseText.includes("<html") || responseText.includes("<!DOCTYPE")) {
                      throw new Error("Google ne permission block kar di hai ya URL purana hai.");
                 }
@@ -84,8 +84,7 @@ app.post('/webhook', async (req, res) => {
             }
 
             if (clientContext && !clientContext.error) {
-                await sendTelegramMessage(`📝 Draft ban raha hai...`);
-                const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
+                const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
                 const prompt = `The client (${clientContext.sender}) sent this email: "${clientContext.emailText}".\n\nDraft a professional email reply based on this instruction: "${userReplyIntent}".\n\nIMPORTANT: Only return the exact email body. Sign off the email as "Asad Ali". DO NOT use placeholders like [Your Name].`;
                 
                 const result = await model.generateContent(prompt);
