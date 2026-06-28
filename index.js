@@ -11,7 +11,8 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MY_CHAT_ID = process.env.MY_CHAT_ID;
 const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz1jGtizMrv3ftZMkkDZfnWyJ1HrxVcJYf5Q9qTIpjBNO6l2kYFtTJLZjArMqsOCd2_pg/exec";
+// BHAII YAHAN PAR APNA NAYA WEB APP URL PASTE KAREIN JO GOOGLE NE ABHI DIYA HAI:
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwzOgOawT7hVmAMf34M378s_FciBMC2IjRRJO1XjY2RY5bvNgK_msCs-UTImx4eRnWLOw/exec";
 
 async function sendTelegramMessage(text) {
     try {
@@ -70,9 +71,15 @@ app.post('/webhook', async (req, res) => {
                 });
                 
                 const responseText = await gasContextResponse.text(); 
+                
+                // Agar Google ne block kiya toh yeh pakar lega
+                if (responseText.includes("<html") || responseText.includes("<!DOCTYPE")) {
+                     throw new Error("Google ne permission block kar di hai ya URL purana hai.");
+                }
+                
                 clientContext = JSON.parse(responseText); 
             } catch (fetchErr) {
-                await sendTelegramMessage(`⚠️ Error: Google server se raabta toot gaya. Please check Apps Script deployment permissions (Should be 'Anyone').`);
+                await sendTelegramMessage(`⚠️ URL ERROR: Vercel purane Google URL par jaraha hai!\n\nHAL (Fix):\n1. Google Apps Script se NAYA Web App URL copy karein.\n2. index.js ki Line 15 (APPS_SCRIPT_URL) mein paste karein.\n3. Vercel ko update karein.`);
                 return res.status(200).send('OK');
             }
 
