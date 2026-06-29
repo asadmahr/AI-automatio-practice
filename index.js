@@ -11,6 +11,7 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MY_CHAT_ID = process.env.MY_CHAT_ID;
 const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+// ⚠️ YAHAN APNA GOOGLE APPS SCRIPT WALA URL LAZMI DAALNA (Jo pichli dafa theek kiya tha)
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyFdC9yJ9o4WldfStwb6yLVwbypB031Xkdfx3H_FtCe-45R_C7XsYq8IcJjA7-GPoIOtw/exec";
 
 async function sendTelegramMessage(text) {
@@ -26,23 +27,15 @@ async function sendTelegramMessage(text) {
     }
 }
 
-// Yeh function AI crash hone se bachayega
+// 🚨 YAHAN HUMNE DEBUG MODE ON KIYA HAI TA'KE ASAL ERROR NAZAR AAYE
 async function getSafeAIResponse(prompt) {
     try {
-        // Pehle 1.5 Flash try karega
         const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
         const result = await model.generateContent(prompt);
         return result.response.text();
-    } catch (error1) {
-        try {
-            // Agar fail hua, toh Gemini Pro try karega
-            const fallbackModel = ai.getGenerativeModel({ model: "gemini-pro" });
-            const fallbackResult = await fallbackModel.generateContent(prompt);
-            return fallbackResult.response.text();
-        } catch (error2) {
-            // Agar dono fail, toh crash hone ki bajaye simple message dega
-            return "⚠️ AI is currently unavailable due to Google API limits. Please read the original email.";
-        }
+    } catch (error) {
+        // Ab fallback message nahi aayega, direct Google ka raw error aayega
+        return `⚠️ GOOGLE API ERROR: ${error.message}`;
     }
 }
 
@@ -52,7 +45,6 @@ app.post('/summarize', async (req, res) => {
         
         const prompt = `Read this email from ${sender}. Subject: ${subject}.\n\nProvide a 2-sentence summary and a bulleted list of Action Items. Keep tone professional. Plain text only.\n\nEmail Content:\n${emailText}`;
 
-        // Safe AI Function Call
         let summaryText = await getSafeAIResponse(prompt);
         
         const telegramMessage = `📧 New Email ID: #${uniqueId}\n👤 From: ${sender}\n📌 Subject: ${subject}\n\nSummary:\n${summaryText}\n\nReply with #${uniqueId} [your message] to generate a reply.`;
@@ -61,8 +53,7 @@ app.post('/summarize', async (req, res) => {
         res.status(200).json({ status: "Success", message: "Sent to Telegram" });
     } catch (error) {
         console.error("Summarize Error:", error);
-        await sendTelegramMessage(`❌ Server Error: Summary process nahi ho saki.`);
-        // Returning 200 even on error so Apps Script doesn't freak out
+        await sendTelegramMessage(`❌ Server Error Handled: ${error.message}`);
         res.status(200).json({ error: "Server Error Handled" });
     }
 });
@@ -103,7 +94,6 @@ app.post('/webhook', async (req, res) => {
             if (clientContext && !clientContext.error) {
                 const prompt = `The client (${clientContext.sender}) sent this email: "${clientContext.emailText}".\n\nDraft a professional email reply based on this instruction: "${userReplyIntent}".\n\nIMPORTANT: Only return the exact email body. Sign off the email as "Asad Ali". DO NOT use placeholders.`;
                 
-                // Safe AI Function Call
                 let draft = await getSafeAIResponse(prompt);
                 
                 await fetch(APPS_SCRIPT_URL, {
@@ -120,7 +110,7 @@ app.post('/webhook', async (req, res) => {
         return res.status(200).send('OK'); 
 
     } catch (error) {
-        await sendTelegramMessage(`❌ AI Error: Jawab process nahi ho saka.`);
+        await sendTelegramMessage(`❌ AI Error: ${error.message}`);
         return res.status(200).send('OK');
     }
 });
