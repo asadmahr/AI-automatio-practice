@@ -9,7 +9,7 @@ app.use(express.json());
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MY_CHAT_ID = process.env.MY_CHAT_ID;
 
-// ⚠️ YAHAN APNA GOOGLE APPS SCRIPT WALA URL LAZMI DAALNA (Jo pichli dafa theek kiya tha)
+// ⚠️ YAHAN APNA GOOGLE APPS SCRIPT WALA URL LAZMI DAALNA 
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyb00GBREfRfMLEzEqTsBOJDctiPSaoZlp1-YZhQRzB4G8SMw4ZHcn2jLu7urDQometpA/exec";
 
 async function sendTelegramMessage(text) {
@@ -29,7 +29,6 @@ async function sendTelegramMessage(text) {
 async function getSafeAIResponse(prompt) {
     try {
         const apiKey = process.env.GEMINI_API_KEY;
-        // Direct REST API hit to gemini-1.5-flash
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
         
         const response = await fetch(url, {
@@ -42,12 +41,10 @@ async function getSafeAIResponse(prompt) {
         
         const data = await response.json();
         
-        // Agar Google error de (Limit, Quota, Invalid Key) toh wahi error return karo
         if (!response.ok) {
             return `⚠️ GOOGLE API ERROR: ${data.error?.message || 'Unknown API Error'}`;
         }
         
-        // Agar theek chal jaye to summary/draft return karo
         return data.candidates[0].content.parts[0].text;
     } catch (error) {
         return `⚠️ SERVER ERROR: ${error.message}`;
@@ -58,6 +55,9 @@ app.post('/summarize', async (req, res) => {
     try {
         const { emailText, sender, subject, uniqueId } = req.body;
         
+        // 🔴 LIVE TRACKER: Jaise hi email Vercel ko milegi, sabse pehle yeh message aayega
+        await sendTelegramMessage(`🛠 System Check: Email ID #${uniqueId} Vercel tak pohanch gayi hai! AI se summary banwa raha hoon (Wait 5-10 sec)...`);
+
         const prompt = `Read this email from ${sender}. Subject: ${subject}.\n\nProvide a 2-sentence summary and a bulleted list of Action Items. Keep tone professional. Plain text only.\n\nEmail Content:\n${emailText}`;
 
         let summaryText = await getSafeAIResponse(prompt);
@@ -69,7 +69,7 @@ app.post('/summarize', async (req, res) => {
     } catch (error) {
         console.error("Summarize Error:", error);
         await sendTelegramMessage(`❌ Server Error Handled: ${error.message}`);
-        res.status(200).json({ error: "Server Error Handled" }); // Changed to 200 to prevent Apps Script infinite loops
+        res.status(200).json({ error: "Server Error Handled" }); 
     }
 });
 
