@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
 app.use(cors());
@@ -9,10 +8,9 @@ app.use(express.json());
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MY_CHAT_ID = process.env.MY_CHAT_ID;
-const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // ⚠️ YAHAN APNA GOOGLE APPS SCRIPT WALA URL LAZMI DAALNA (Jo pichli dafa theek kiya tha)
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyFdC9yJ9o4WldfStwb6yLVwbypB031Xkdfx3H_FtCe-45R_C7XsYq8IcJjA7-GPoIOtw/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyb00GBREfRfMLEzEqTsBOJDctiPSaoZlp1-YZhQRzB4G8SMw4ZHcn2jLu7urDQometpA/exec";
 
 async function sendTelegramMessage(text) {
     try {
@@ -27,15 +25,32 @@ async function sendTelegramMessage(text) {
     }
 }
 
-// 🚨 YAHAN HUMNE DEBUG MODE ON KIYA HAI TA'KE ASAL ERROR NAZAR AAYE
+// 🚨 DIRECT API CALL (Bina kisi npm package ke, taake purani library fail hone ka masla hi khatam ho jaye)
 async function getSafeAIResponse(prompt) {
     try {
-        const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const result = await model.generateContent(prompt);
-        return result.response.text();
+        const apiKey = process.env.GEMINI_API_KEY;
+        // Direct REST API hit to gemini-1.5-flash
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }]
+            })
+        });
+        
+        const data = await response.json();
+        
+        // Agar Google error de (Limit, Quota, Invalid Key) toh wahi error return karo
+        if (!response.ok) {
+            return `⚠️ GOOGLE API ERROR: ${data.error?.message || 'Unknown API Error'}`;
+        }
+        
+        // Agar theek chal jaye to summary/draft return karo
+        return data.candidates[0].content.parts[0].text;
     } catch (error) {
-        // Ab fallback message nahi aayega, direct Google ka raw error aayega
-        return `⚠️ GOOGLE API ERROR: ${error.message}`;
+        return `⚠️ SERVER ERROR: ${error.message}`;
     }
 }
 
@@ -54,7 +69,7 @@ app.post('/summarize', async (req, res) => {
     } catch (error) {
         console.error("Summarize Error:", error);
         await sendTelegramMessage(`❌ Server Error Handled: ${error.message}`);
-        res.status(200).json({ error: "Server Error Handled" });
+        res.status(200).json({ error: "Server Error Handled" }); // Changed to 200 to prevent Apps Script infinite loops
     }
 });
 
