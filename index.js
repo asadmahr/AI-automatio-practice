@@ -56,9 +56,6 @@ app.post('/summarize', async (req, res) => {
     try {
         const { emailText, sender, subject, uniqueId } = req.body;
         
-        // 🔴 LIVE TRACKER: Jaise hi email Vercel ko milegi, sabse pehle yeh message aayega
-        await sendTelegramMessage(`🛠 System Check: Email ID #${uniqueId} Vercel tak pohanch gayi hai! AI se summary banwa raha hoon (Wait 5-10 sec)...`);
-
         const prompt = `Read this email from ${sender}. Subject: ${subject}.\n\nProvide a 2-sentence summary and a bulleted list of Action Items. Keep tone professional. Plain text only.\n\nEmail Content:\n${emailText}`;
 
         let summaryText = await getSafeAIResponse(prompt);
@@ -87,8 +84,6 @@ app.post('/webhook', async (req, res) => {
             const id = idMatch[1];
             const userReplyIntent = userText.replace(idMatch[0], '').trim();
             
-            await sendTelegramMessage(`⏳ Wait karein... Draft ban raha hai...`);
-            
             let clientContext;
             try {
                 const gasContextResponse = await fetch(APPS_SCRIPT_URL, {
@@ -103,7 +98,7 @@ app.post('/webhook', async (req, res) => {
                 }
                 clientContext = JSON.parse(responseText); 
             } catch (fetchErr) {
-                await sendTelegramMessage(`⚠️ Error: Google server se raabta toot gaya. Please check Apps Script URL.`);
+                await sendTelegramMessage(`⚠️ Error: Connection to Google server lost. Please check Apps Script URL.`);
                 return res.status(200).send('OK');
             }
 
@@ -120,7 +115,7 @@ app.post('/webhook', async (req, res) => {
 
                 await sendTelegramMessage(`✅ Email Successfully Sent to Client!\n\nEmail Body:\n${draft}`);
             } else {
-                await sendTelegramMessage(`⚠️ Error: ID #${id} ki memory Google se nahi mili.`);
+                await sendTelegramMessage(`⚠️ Error: Context for ID #${id} not found in Google memory.`);
             }
         }
         return res.status(200).send('OK'); 
